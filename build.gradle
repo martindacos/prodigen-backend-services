@@ -1,0 +1,60 @@
+buildscript {
+    ext {
+        springBootVersion = '1.5.2.RELEASE'
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+apply plugin: 'org.springframework.boot'
+
+jar {
+    baseName = 'prodigen-backend'
+    version =  '0.1.0'
+}
+
+repositories {
+    mavenCentral()
+}
+
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
+dependencies {
+    compile group: "org.springframework.boot", name:"spring-boot-starter-web"
+    compile("org.springframework.boot:spring-boot-starter-thymeleaf")
+    compile("org.springframework.boot:spring-boot-starter-data-mongodb")
+    compile group: "org.springframework.boot", name:"spring-boot-devtools"
+
+
+    compile ('org.json:json:20090211')
+    compile files('lib/WoMine.jar')
+    compile files('lib/simplenlg.jar')
+    compile files('lib/JRI.jar')
+    compile files('lib/JRIEngine.jar')
+    compile files('lib/REngine.jar')
+    compile files('lib/xchart-3.5.1.jar')
+    compile files('lib/chart-2.3.1.jar')
+    compile files('lib/zt-zip-1.12.jar')
+    compile ('org.apache.spark:spark-core_2.11:2.1.0')
+    compile ('org.mongodb.spark:mongo-spark-connector_2.11:2.1.0')
+    compile ('org.apache.spark:spark-sql_2.11:2.1.0')
+
+    compile group: "io.springfox", name:"springfox-swagger2", version: "2.7.0"
+    compile group: "io.springfox", name:"springfox-swagger-ui", version: "2.7.0"
+}
+
+configurations.all {
+    exclude group: 'org.slf4j', module: 'slf4j-log4j12'
+    exclude group: 'ch.qos.logback', module: 'logback-classic'
+}
+

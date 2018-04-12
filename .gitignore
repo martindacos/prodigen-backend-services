@@ -1,0 +1,17 @@
+prodigen-backend.iml
+
+log-dir/
+
+upload-dir/
+
+out/
+
+\.idea/
+
+\.gradle/*
+
+build/*
+
+!* .gitkeep/
+
+gradlew
