@@ -1,11 +1,23 @@
 package bpm;
 
-public class Operation {
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import io.swagger.annotations.ApiModelProperty;
+
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.zip.Checksum;
+
+public class Operation{
     private String file;
     private OperationsType operationsType;
     private String model;
     private Double threshold;
-private String id;
+    private String id;
+    private OperationStatus status;
+    @ApiModelProperty(hidden = true)
+    private Thread thread;
 
     public Operation(String file, OperationsType operationsType, String model, Double threshold) {
         this.file = file;
@@ -66,5 +78,39 @@ private String id;
         result = 31 * result + (model != null ? model.hashCode() : 0);
         result = 31 * result + (threshold != null ? threshold.hashCode() : 0);
         return result;
+    }
+
+    public OperationStatus getStatus() {
+        return status;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public void setStatus(OperationStatus status) {
+        this.status = status;
+    }
+
+    public Thread getThread() {
+        return thread;
+    }
+
+    public void setThread(Thread thread) {
+        this.thread = thread;
+    }
+
+    public String getId(){
+        return String.format("%s:%s@%s/%s", this.operationsType, this.file, this.model, this.threshold);
+    }
+
+    public String getCleanId(){
+        try {
+            MessageDigest md5 = MessageDigest.getInstance("MD5");
+            return new String(md5.digest(this.getId().getBytes()));
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+        }
+        return null;
     }
 }

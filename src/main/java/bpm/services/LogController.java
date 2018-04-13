@@ -1,6 +1,8 @@
 package bpm.services;
 
 import bpm.Operation;
+import bpm.OperationManager;
+import bpm.OperationStatus;
 import bpm.OperationsType;
 import bpm.log_editor.data_types.*;
 import bpm.log_editor.parser.CSVparser;
@@ -75,7 +77,7 @@ public class LogController implements Serializable {
     @ApiResponses({
             @ApiResponse(code = 201, message = "Log", response = LogFile.class)
     })
-    public LogFile getLog(@ApiParam("The log ID") @PathVariable("id") String id) {
+    public LogFile getLog(@ApiParam(value = "The log ID", required = true) @PathVariable("id") String id) {
         return LogService.getLogByName(id);
     }
 
@@ -145,7 +147,7 @@ public class LogController implements Serializable {
             @ApiResponse(code = 200, message = "File uploaded correctly", response = ResponseEntity.class),
             @ApiResponse(code = 500, message = "Internal server error", response = ResponseEntity.class)
     })
-    public ResponseEntity uploadConfig(@ApiParam("The configuration name") String name, @ApiParam("The file to upload") @RequestParam("config") MultipartFile config) {
+    public ResponseEntity uploadConfig(@ApiParam("The configuration name")  @RequestParam("name") String name, @ApiParam("The file to upload") @RequestParam("config") MultipartFile config) {
         //Insert config to db
         name = storageService.store(config, name + ".ini");
 
@@ -188,7 +190,7 @@ public class LogController implements Serializable {
             @ApiResponse(code = 200, message = "Config assigned correctly", response = ResponseEntity.class),
             @ApiResponse(code = 500, message = "Internal server error", response = ResponseEntity.class)
     })
-    public ResponseEntity loadConfig(@ApiParam("The log ID") String logId, @ApiParam("The config ID") String name) {
+    public ResponseEntity loadConfig(@ApiParam("The log ID")  @RequestParam("logId") String logId, @ApiParam("The config ID")  @RequestParam("name") String name) {
         //Read Config File
         Config c;
         try {
@@ -225,7 +227,7 @@ public class LogController implements Serializable {
             @ApiResponse(code = 404, message = "Log not found", response = ResponseEntity.class),
             @ApiResponse(code = 500, message = "Internal server error", response = ResponseEntity.class)
     })
-    public ResponseEntity deleteLog(@ApiParam("The log ID") @PathVariable("id") String id){
+    public ResponseEntity deleteLog(@ApiParam(value = "The log ID", required = true) @PathVariable("id") String id){
         LogFile logByName = LogService.getLogByName(id);
         if (logByName == null) {
             return ResponseEntity.notFound().build();
@@ -241,7 +243,7 @@ public class LogController implements Serializable {
 
 
     //----COMPLEX LOG FUNCTIONS----//
-    @CrossOrigin
+    /*@CrossOrigin
     @GetMapping("/headers")
     @ApiOperation(value = "Returns log column headers")
     @ApiResponses({
@@ -343,7 +345,7 @@ public class LogController implements Serializable {
         return LogService.getLogByName(file).getHeaders();
     }*/
 
-    @CrossOrigin
+    /*@CrossOrigin
     @GetMapping(value = "/db")
     @ApiOperation(value = "Return the unique values of each column of the file")
     @ApiResponses({
@@ -426,7 +428,7 @@ public class LogController implements Serializable {
         //File opt = new File("/opt/files/" + file);
         //opt.mkdirs();
 
-        String path = null;
+        /*String path = null;
 
 
         for (MinedLog model : LogService.getLogByName(file).getModels()) {
@@ -447,7 +449,7 @@ public class LogController implements Serializable {
             //path = engine.eval("setwd(\""+ model.getFolderName() + "\")\n").asString();
             //System.out.println(engine.eval("png(\"" + model.getFolderName() + "/BoxPlot.png\")"));
             //System.out.println(engine.eval("boxplot(mpg~cyl,data=mtcars, main=\"Car Milage Data\", \n" +
-             //       "  \txlab=\"Number of Cylinders\", ylab=\"Miles Per Gallon\")"));
+            //       "  \txlab=\"Number of Cylinders\", ylab=\"Miles Per Gallon\")"));
             //System.out.println(engine.eval("dev.off();"));
 
             //CREATE ZIP
@@ -455,7 +457,7 @@ public class LogController implements Serializable {
         }
 
         return ResponseEntity.ok().build();
-    }
+    }*/
 
     @CrossOrigin
     @PostMapping(value = "/operations")
@@ -467,86 +469,170 @@ public class LogController implements Serializable {
             @ApiResponse(code = 500, message = "Internal server error", response = ResponseEntity.class)
     })
     public ResponseEntity mineLogConfig(@ApiParam("The log ID and the log operation") @RequestParam("operation") Operation operation) throws EmptyLogException, InvalidFileExtensionException, MalformedFileException, WrongLogEntryException, NonFinishedWorkflowException, ParseException, IOException {
-        String file = operation.getFile();
-        OperationsType operationsType = operation.getOperationsType();
-        LogFile logByName = LogService.getLogByName(file);
+        boolean added = OperationManager.getInstance().addOperation(operation);
 
-        if (logByName == null) {
-            return ResponseEntity.notFound().build();
+        if(added) {
+
+            String file = operation.getFile();
+            OperationsType operationsType = operation.getOperationsType();
+            LogFile logByName = LogService.getLogByName(file);
+
+            operation.setStatus(OperationStatus.WAITING);
+
+            if (logByName == null) {
+                operation.setStatus(OperationStatus.FAILED);
+            }
+
+            String data;
+            Double threshold;
+
+            Thread t;
+            switch (operationsType) {
+                case MINE:
+                    t = new Thread(() -> {
+                        operation.setStatus(OperationStatus.RUNNING);
+
+                        Hierarchy h = new Hierarchy();
+
+                        try {
+                            logByName.setTree(h);
+                            MongoDAO.queryLog(logByName, h);
+                            //CREATE ZIP
+                            ZipUtil.pack(new File("log-dir/" + file + "/"), new File("/opt/files/" + file + ".zip"));
+
+
+                            operation.setStatus(OperationStatus.FINISHED);
+                            OperationResult result = new OperationResult();
+                            result.setResultPath("/opt/files/" + file + ".zip");
+
+                            OperationManager.getInstance().saveResult(operation.getId(), result);
+                        } catch (Exception ex) {
+                            operation.setStatus(OperationStatus.FAILED);
+                        }
+                    });
+
+                    operation.setThread(t);
+                    t.start();
+                    break;
+                case FPATTERN:
+                    data = operation.getModel();
+                    threshold = operation.getThreshold();
+                    t = new Thread(() -> {
+                        operation.setStatus(OperationStatus.RUNNING);
+                        List<String> frequentPatterns = LogService.getLogByName(file).getFrequentPatterns(Integer.parseInt(data), threshold);
+
+                        OperationResult result = new OperationResult();
+                        result.setPatterns(frequentPatterns);
+                        operation.setStatus(OperationStatus.FINISHED);
+
+                        OperationManager.getInstance().saveResult(operation.getId(), result);
+                    });
+
+                    operation.setThread(t);
+                    t.start();
+                    break;
+                case IPATTERN:
+                    data = operation.getModel();
+                    threshold = operation.getThreshold();
+                    t = new Thread(() -> {
+                        operation.setStatus(OperationStatus.RUNNING);
+                        List<String> infrequentPatterns = LogService.getLogByName(file).getInfrequentPatterns(Integer.parseInt(data), threshold);
+
+                        OperationResult result = new OperationResult();
+                        result.setPatterns(infrequentPatterns);
+                        operation.setStatus(OperationStatus.FINISHED);
+
+                        OperationManager.getInstance().saveResult(operation.getId(), result);
+                    });
+
+                    operation.setThread(t);
+                    t.start();
+                    break;
+                default:
+                    return ResponseEntity.status(422).build();
+            }
         }
 
-        String data;
-        Double threshold;
-
-        switch (operationsType) {
-            case MINE:
-                Hierarchy h = new Hierarchy();
-                logByName.setTree(h);
-
-                try {
-                    MongoDAO.queryLog(logByName, h);
-                } catch (IOException e) {
-                    return ResponseEntity.status(500).build();
-                }
-
-                for (MinedLog model : LogService.getLogByName(file).getModels()) {
-                    //Activity Duration
-                    ChartGenerator.ActivityDuration(model);
-
-                    //CREATE ZIP
-                    ZipUtil.pack(new File("log-dir/" + file + "/"), new File("/opt/files/" + file + ".zip"));
-                }
-
-                return ResponseEntity.ok().build();
-            case FPATTERN:
-                data = operation.getModel();
-                threshold = operation.getThreshold();
-                LogService.getLogByName(file).getFrequentPatterns(Integer.parseInt(data), threshold);
-                return null;
-            case IPATTERN:
-                data = operation.getModel();
-                threshold = operation.getThreshold();
-                LogService.getLogByName(file).getInfrequentPatterns(Integer.parseInt(data), threshold);
-                return null;
-            default:
-                return ResponseEntity.status(422).build();
-        }
+        return ResponseEntity.accepted().header(HttpHeaders.LOCATION, String.format("/operations/%s", operation.getCleanId())).build();
     }
 
     @CrossOrigin
     @GetMapping("/operations")
     @ApiOperation(value = "Lists operations in the server")
     @ApiResponses({
-            @ApiResponse(code = 201, message = "The operations list", response = String.class, responseContainer = "List")
+            @ApiResponse(code = 201, message = "The operations list", response = Operation.class, responseContainer = "List")
     })
-    public List<String> listOperations() throws IOException {
-        //TODO
-        return null;
+    public List<Operation> listOperations() throws IOException {
+        return OperationManager.getInstance().getAllOperations();
     }
 
     @CrossOrigin
     @GetMapping("/operations/{id}")
     @ApiOperation(value = "Lists operations in the server")
     @ApiResponses({
-            @ApiResponse(code = 201, message = "The operation status", response = String.class)
+            @ApiResponse(code = 201, message = "The operation status", response = Operation.class)
     })
-    public String getOperation() throws IOException {
-        //TODO
-        return null;
+    public ResponseEntity getOperation(@ApiParam(value = "Operation ID", required = true) @PathVariable("id") String id) throws IOException {
+        Operation op = OperationManager.getInstance().getOperation(id);
+
+        if(Objects.isNull(op))
+            return ResponseEntity.notFound().build();
+        else if(op.getStatus().equals(OperationStatus.FINISHED))
+            return  ResponseEntity.status(HttpStatus.SEE_OTHER).header(HttpHeaders.LOCATION, String.format("/operations/%s/result", id)).build();
+        else
+            return ResponseEntity.status(HttpStatus.SEE_OTHER).header(HttpHeaders.LOCATION, String.format("/operations/%s/status", id)).build();
     }
 
     @CrossOrigin
     @GetMapping("/operations/{id}/result")
     @ApiOperation(value = "Operation result")
     @ApiResponses({
-            @ApiResponse(code = 201, message = "The operation result", response = OperationResult.class)
+            @ApiResponse(code = 201, message = "The operation result", response = ResponseEntity.class)
     })
-    public OperationResult getOperationResult() throws IOException {
-        //TODO
-        return null;
+    public ResponseEntity getOperationResult(@ApiParam(value = "Operation ID", required = true) @PathVariable("id") String id) throws IOException {
+        OperationResult result = OperationManager.getInstance().getResult(id);
+        if (Objects.isNull(result)) {
+            return ResponseEntity.notFound().build();
+        } else {
+            return ResponseEntity.ok(result);
+        }
     }
 
     @CrossOrigin
+    @GetMapping("/operations/{id}/status")
+    @ApiOperation(value = "Operation result")
+    @ApiResponses({
+            @ApiResponse(code = 201, message = "The operation status", response = ResponseEntity.class)
+    })
+    public ResponseEntity getOperationStatus(@ApiParam(value = "Operation ID", required = true) @PathVariable("id") String id) throws IOException {
+        Operation operation = OperationManager.getInstance().getOperation(id);
+        if (Objects.isNull(operation)) {
+            return ResponseEntity.notFound().build();
+        } else {
+            return ResponseEntity.ok(operation);
+        }
+    }
+
+    @CrossOrigin
+    @DeleteMapping("/operations/{id}")
+    @ApiOperation(value = "Delete operation")
+    @ApiResponses({
+            @ApiResponse(code = 200, message = "Operation deleted well", response = ResponseEntity.class)
+    })
+    public ResponseEntity deleteOperation(@ApiParam(value = "Operation ID", required = true) @PathVariable("id") String id) throws IOException {
+        Operation operation = OperationManager.getInstance().getOperation(id);
+        if (Objects.isNull(operation)) {
+            return ResponseEntity.notFound().build();
+        } else {
+            if (operation.getStatus().equals(OperationStatus.RUNNING)) {
+                operation.getThread().interrupt();
+            }
+            operation.setStatus(OperationStatus.KILLED);
+            return ResponseEntity.ok().build();
+        }
+    }
+
+    /*@CrossOrigin
     @DeleteMapping("/model")
     @ApiOperation(value = "Delete a model from a log")
     @ApiResponses({
@@ -682,9 +768,9 @@ public class LogController implements Serializable {
             log.setConfigName(configName);
         }
         return ResponseEntity.status(HttpStatus.OK).contentType(MediaType.TEXT_PLAIN).body(configName);
-    }
+    }*/
 
-    @CrossOrigin
+ /*   @CrossOrigin
     @GetMapping("/configs")
     @ApiOperation(value = "Lists all configs in the server")
     @ApiResponses({
@@ -754,6 +840,6 @@ public class LogController implements Serializable {
         con.updateMulti(query, update);
 
         return ResponseEntity.status(HttpStatus.OK).build();
-    }
+    }*/
 }
 

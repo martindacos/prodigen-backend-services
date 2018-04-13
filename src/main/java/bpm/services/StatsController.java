@@ -60,7 +60,7 @@ public class StatsController implements Serializable{
     }
 
     //---PATTERNS---//
-    @CrossOrigin
+    /*@CrossOrigin
     @GetMapping(value = "/frequentPatterns")
     @ApiOperation(value = "Get the frequent patterns of a log with a determined threshold")
     @ApiResponses({
@@ -120,7 +120,7 @@ public class StatsController implements Serializable{
 
     //---STATS FUNCTIONS---//
     //Activity stats
-    @CrossOrigin
+    /*@CrossOrigin
     @GetMapping("logsStats/{id}/activity")
     @ApiOperation(value = "Get the activity stats of a uploaded log")
     @ApiResponses({
@@ -265,6 +265,6 @@ public class StatsController implements Serializable{
         } else {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
-    }
+    }*/
 }
 
