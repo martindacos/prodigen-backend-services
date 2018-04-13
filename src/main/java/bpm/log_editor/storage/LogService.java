@@ -27,9 +27,9 @@ public class LogService {
         logFiles = (ArrayList<LogFile>) repo.findAll();
     }
 
-    public static LogFile insertLog(String name, String path, String state) {
+    public static LogFile insertLog(String name, String path) {
         //Insert log
-        repo.save(new LogFile(null, name, path, name, null, null, null, null, state, null, null));
+        repo.save(new LogFile(null, name, path, name, null, null, null, null, LOADED, null, null));
 
         //Return created log
         return null;

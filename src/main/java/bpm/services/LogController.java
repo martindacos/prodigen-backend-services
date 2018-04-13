@@ -96,32 +96,43 @@ public class LogController implements Serializable {
 //    }
 
     @CrossOrigin
-    @PostMapping("/fileUpload")
+    @PostMapping("/logs")
     @ApiOperation(value = "Saves file to the server and registers LogFile in collection")
     @ApiResponses({
-            @ApiResponse(code = 200, message = "File uploaded correctly", response = ResponseEntity.class)
+            @ApiResponse(code = 200, message = "File uploaded correctly", response = ResponseEntity.class),
+            @ApiResponse(code = 500, message = "Internal server error", response = ResponseEntity.class),
+            @ApiResponse(code = 400, message = "File type not supported", response = ResponseEntity.class)
     })
-    public ResponseEntity insertLog(@ApiParam("The file to upload")  @RequestParam("file") MultipartFile file, @ApiParam("The log name") String name, @ApiParam("Has configuration") String state) {
-        //Save file
-        name = storageService.store(file, name);
+    public ResponseEntity insertLog(@ApiParam("The file to upload")  @RequestParam("file") MultipartFile file, @ApiParam("The log name") @RequestParam("name") String name, @ApiParam("File type") @RequestParam("type") String type) {
+        if (type.equals("CSV") || type.equals("XES") || type.equals("csv") || type.equals("xes")) {
+            if (type.equals("CSV")) {
+                type = ".csv";
+            }
+            if (type.equals("XES")) {
+                type = ".xes";
+            }
+            //Save file
+            name = storageService.store(file, name + "." + type);
 
-        String newname = name;
-        //Convert to .csv
-        if (name.contains(".xes")) {
-            File file1 = new File(storageService.load(name).toString());
-            String[] split = file1.getName().split("\\.");
-            String fileName = split[0] + ".csv";
-            fileName = storageService.checkName(fileName);
-            newname = XESparser.read(file1, fileName);
-            File oldFile = new File(storageService.load(name).toString());
-            oldFile.delete();
+            String newname = name;
+            //Convert to .csv
+            if (type.equals("xes")) {
+                File file1 = new File(storageService.load(name).toString());
+                String fileName = file1.getName() + ".csv";
+                fileName = storageService.checkName(fileName);
+                newname = XESparser.read(file1, fileName);
+                File oldFile = new File(storageService.load(name).toString());
+                oldFile.delete();
+            }
+
+            //Insert in db
+            String[] parseName = newname.split(".csv");
+            String r = parseName[0];
+            LogService.insertLog(r, newname);
+            return ResponseEntity.status(HttpStatus.OK).contentType(MediaType.TEXT_PLAIN).body(r);
+        } else {
+            return ResponseEntity.status(400).build();
         }
-
-        //Insert in db
-        String[] parseName = newname.split(".csv");
-        String r = parseName[0];
-        LogService.insertLog(r, newname, state);
-        return ResponseEntity.status(HttpStatus.OK).contentType(MediaType.TEXT_PLAIN).body(r);
     }
 
     @CrossOrigin
@@ -446,7 +457,7 @@ public class LogController implements Serializable {
     @DeleteMapping("/model")
     @ApiOperation(value = "Delete a model from a log")
     @ApiResponses({
-            @ApiResponse(code = 201, message = "Model deleted correctly", response = LogFile.class),
+            @ApiResponse(code = 200, message = "Model deleted correctly", response = ResponseEntity.class),
             @ApiResponse(code = 404, message = "Log or model not found", response = ResponseEntity.class),
             @ApiResponse(code = 500, message = "Internal server error", response = ResponseEntity.class)
     })
