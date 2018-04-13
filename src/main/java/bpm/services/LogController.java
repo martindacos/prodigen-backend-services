@@ -1,5 +1,7 @@
 package bpm.services;
 
+import bpm.Operation;
+import bpm.OperationsType;
 import bpm.log_editor.data_types.*;
 import bpm.log_editor.parser.CSVparser;
 import bpm.log_editor.parser.XESparser;
@@ -12,7 +14,6 @@ import com.mongodb.*;
 import com.mongodb.util.JSON;
 import es.usc.citius.prodigen.domainLogic.exceptions.*;
 import io.swagger.annotations.*;
-import org.knowm.xchart.CategoryChart;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.InputStreamResource;
 import org.springframework.core.io.Resource;
@@ -28,6 +29,7 @@ import java.io.*;
 import java.text.ParseException;
 import java.util.*;
 
+import static bpm.OperationsType.*;
 import static bpm.log_editor.parser.Constants.*;
 
 @RestController
@@ -136,7 +138,8 @@ public class LogController implements Serializable {
     }
 
     @CrossOrigin
-    @PostMapping("/uploadConfig")
+    //@PostMapping("/uploadConfig")
+    @PostMapping("/configs")
     @ApiOperation(value = "Upload one configuration file")
     @ApiResponses({
             @ApiResponse(code = 200, message = "File uploaded correctly", response = ResponseEntity.class),
@@ -178,13 +181,14 @@ public class LogController implements Serializable {
     }
 
     @CrossOrigin
-    @PostMapping("/loadConfig")
+    //@PostMapping("/loadConfig")
+    @PostMapping(value = "/matchings")
     @ApiOperation(value = "Assign a config to a uploaded file")
     @ApiResponses({
             @ApiResponse(code = 200, message = "Config assigned correctly", response = ResponseEntity.class),
             @ApiResponse(code = 500, message = "Internal server error", response = ResponseEntity.class)
     })
-    public ResponseEntity loadConfig(@ApiParam("The log ID") String logId, @ApiParam("The config name") String name) {
+    public ResponseEntity loadConfig(@ApiParam("The log ID") String logId, @ApiParam("The config ID") String name) {
         //Read Config File
         Config c;
         try {
@@ -454,6 +458,95 @@ public class LogController implements Serializable {
     }
 
     @CrossOrigin
+    @PostMapping(value = "/operations")
+    @ApiOperation(value = "Mine a log with a determined configuration")
+    @ApiResponses({
+            @ApiResponse(code = 204, message = "Log mined correctly"),
+            @ApiResponse(code = 404, message = "Log not found", response = ResponseEntity.class),
+            @ApiResponse(code = 422, message = "Type operation not allowed", response = ResponseEntity.class),
+            @ApiResponse(code = 500, message = "Internal server error", response = ResponseEntity.class)
+    })
+    public ResponseEntity mineLogConfig(@ApiParam("The log ID and the log operation") @RequestParam("operation") Operation operation) throws EmptyLogException, InvalidFileExtensionException, MalformedFileException, WrongLogEntryException, NonFinishedWorkflowException, ParseException, IOException {
+        String file = operation.getFile();
+        OperationsType operationsType = operation.getOperationsType();
+        LogFile logByName = LogService.getLogByName(file);
+
+        if (logByName == null) {
+            return ResponseEntity.notFound().build();
+        }
+
+        String data;
+        Double threshold;
+
+        switch (operationsType) {
+            case MINE:
+                Hierarchy h = new Hierarchy();
+                logByName.setTree(h);
+
+                try {
+                    MongoDAO.queryLog(logByName, h);
+                } catch (IOException e) {
+                    return ResponseEntity.status(500).build();
+                }
+
+                for (MinedLog model : LogService.getLogByName(file).getModels()) {
+                    //Activity Duration
+                    ChartGenerator.ActivityDuration(model);
+
+                    //CREATE ZIP
+                    ZipUtil.pack(new File("log-dir/" + file + "/"), new File("/opt/files/" + file + ".zip"));
+                }
+
+                return ResponseEntity.ok().build();
+            case FPATTERN:
+                data = operation.getModel();
+                threshold = operation.getThreshold();
+                LogService.getLogByName(file).getFrequentPatterns(Integer.parseInt(data), threshold);
+                return null;
+            case IPATTERN:
+                data = operation.getModel();
+                threshold = operation.getThreshold();
+                LogService.getLogByName(file).getInfrequentPatterns(Integer.parseInt(data), threshold);
+                return null;
+            default:
+                return ResponseEntity.status(422).build();
+        }
+    }
+
+    @CrossOrigin
+    @GetMapping("/operations")
+    @ApiOperation(value = "Lists operations in the server")
+    @ApiResponses({
+            @ApiResponse(code = 201, message = "The operations list", response = String.class, responseContainer = "List")
+    })
+    public List<String> listOperations() throws IOException {
+        //TODO
+        return null;
+    }
+
+    @CrossOrigin
+    @GetMapping("/operations/{id}")
+    @ApiOperation(value = "Lists operations in the server")
+    @ApiResponses({
+            @ApiResponse(code = 201, message = "The operation status", response = String.class)
+    })
+    public String getOperation() throws IOException {
+        //TODO
+        return null;
+    }
+
+    @CrossOrigin
+    @GetMapping("/operations/{id}/result")
+    @ApiOperation(value = "Operation result")
+    @ApiResponses({
+            @ApiResponse(code = 201, message = "The operation result", response = OperationResult.class)
+    })
+    public OperationResult getOperationResult() throws IOException {
+        //TODO
+        return null;
+    }
+
+    @CrossOrigin
     @DeleteMapping("/model")
     @ApiOperation(value = "Delete a model from a log")
     @ApiResponses({
@@ -611,7 +704,7 @@ public class LogController implements Serializable {
     }
 
     @CrossOrigin
-    @GetMapping(value = "/config/{id}")
+    @GetMapping(value = "/configs/{id}")
     @ApiOperation(value = "Get a config by its id")
     @ApiResponses({
             @ApiResponse(code = 201, message = "Config", response = ResponseEntity.class),
@@ -631,7 +724,7 @@ public class LogController implements Serializable {
     }
 
     @CrossOrigin
-    @DeleteMapping(value = "/config/{id}")
+    @DeleteMapping(value = "/configs/{id}")
     @ApiOperation(value = "Deletes a config")
     @ApiResponses({
             @ApiResponse(code = 200, message = "Config deleted correctly", response = ResponseEntity.class),
